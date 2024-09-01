@@ -3,9 +3,7 @@ import logging
 import tarfile
 import pandas as pd
 from datetime import datetime
-from fastkml import kml
 import gpxpy
-from shapely.geometry import LineString
 
 
 def extract_tar(file_path):
@@ -25,6 +23,18 @@ def load_csv_gzip(file_path):
     :return: None
     """
     return pd.read_csv(file_path, compression='gzip')
+
+
+def drop_nan_rows(df):
+    """
+    Drops rows from the DataFrame where any NaN values are present in the 'lat', 'geoaltitude', or 'lon' columns.
+
+    :param df: pandas DataFrame containing the flight data with columns 'lat', 'geoaltitude', 'lon', and others.
+    :return: DataFrame with rows containing NaN values in the specified columns removed.
+    """
+    df_cleaned = df.dropna(subset=['lat', 'lon', 'geoaltitude'])
+
+    return df_cleaned
 
 
 def write_kml_for_each_callsign(df):
@@ -94,17 +104,14 @@ def write_kml_for_each_callsign(df):
 def write_gpx_for_each_callsign(df):
     """
     Write for each callsing a seperate gpx file
-    :param df: pandas DataFrame with the columns 'callsign', 'time', 'lon', 'lat', 'geoaltitude'
+    :param df: grouped pandas DataFrame with the columns 'callsign', 'time', 'lon', 'lat', 'geoaltitude'
     :return: None
     """
     # Erstelle einen Ordner für GPX-Dateien, falls er nicht existiert
     gpx_folder = 'gpx'
     os.makedirs(gpx_folder, exist_ok=True)
 
-    # Gruppiere den DataFrame nach 'callsign'
-    grouped = df.groupby('callsign')
-
-    for callsign, group in grouped:
+    for callsign, group in df:
         gpx = gpxpy.gpx.GPX()
         gpx_track = gpxpy.gpx.GPXTrack()
         gpx.tracks.append(gpx_track)
