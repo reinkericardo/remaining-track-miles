@@ -10,3 +10,4 @@ logging.basicConfig(
 file_path = 'data/states_2022-06-27-20.csv.gz'
 df = data_processing_utilities.load_csv_gzip(file_path=file_path)
 
+data_processing_utilities.write_kml_for_each_callsign(df=df)
