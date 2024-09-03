@@ -3,7 +3,6 @@ import logging
 import tarfile
 import pandas as pd
 from datetime import datetime
-import gpxpy
 
 
 def extract_tar(file_path):
@@ -25,18 +24,6 @@ def load_csv_gzip(file_path):
     return pd.read_csv(file_path, compression='gzip')
 
 
-def drop_nan_rows(df):
-    """
-    Drops rows from the DataFrame where any NaN values are present in the 'lat', 'geoaltitude', or 'lon' columns.
-
-    :param df: pandas DataFrame containing the flight data with columns 'lat', 'geoaltitude', 'lon', and others.
-    :return: DataFrame with rows containing NaN values in the specified columns removed.
-    """
-    df_cleaned = df.dropna(subset=['lat', 'lon', 'geoaltitude'])
-
-    return df_cleaned
-
-
 def write_kml_for_each_callsign(df):
     """
     Creates a KML file for each unique callsign in the DataFrame. The KML files will visualize the flight paths with
@@ -45,7 +32,6 @@ def write_kml_for_each_callsign(df):
     :param df: pandas DataFrame containing the flight data with columns 'callsign', 'time', 'lon', 'lat', and 'geoaltitude'
     :return: None
     """
-    # Create a folder for KML files if it doesn't exist
     kml_folder = 'kml'
     os.makedirs(kml_folder, exist_ok=True)
 
@@ -101,53 +87,67 @@ def write_kml_for_each_callsign(df):
             logging.error(f"Failed to write KML file for {callsign}: {e}")
 
 
-def write_gpx_for_each_callsign(df):
+def write_animated_kml_for_each_callsign(df):
     """
-    Write for each callsing a seperate gpx file
-    :param df: grouped pandas DataFrame with the columns 'callsign', 'time', 'lon', 'lat', 'geoaltitude'
+    Creates an animated KML file for each unique callsign in the DataFrame. The KML files will visualize the flight paths
+    with coordinates including longitude, latitude, altitude, and time, allowing an animation to take place.
+
+    :param df: pandas DataFrame containing the flight data with columns 'callsign', 'time', 'lon', 'lat', and 'geoaltitude'
     :return: None
     """
-    # Erstelle einen Ordner für GPX-Dateien, falls er nicht existiert
-    gpx_folder = 'gpx'
-    os.makedirs(gpx_folder, exist_ok=True)
+    # Create a folder for KML files if it doesn't exist
+    kml_folder = 'kml'
+    os.makedirs(kml_folder, exist_ok=True)
 
-    for callsign, group in df:
-        gpx = gpxpy.gpx.GPX()
-        gpx_track = gpxpy.gpx.GPXTrack()
-        gpx.tracks.append(gpx_track)
-        gpx_segment = gpxpy.gpx.GPXTrackSegment()
-        gpx_track.segments.append(gpx_segment)
+    # Group the DataFrame by 'callsign'
+    grouped = df.groupby('callsign')
 
-        # Sortiere nach Zeit
+    for callsign, group in grouped:
+        # Sort the group by time
         group = group.sort_values('time')
 
-        # Überprüfen, ob genug Punkte vorhanden sind
-        if group.shape[0] == 0:
-            logging.info(f"No points available for callsign: {callsign}")
+        # Check if there are enough points to create a line
+        if group.shape[0] < 2:
+            logging.info(f"Not enough points available for callsign: {callsign}")
             continue
 
-        for _, row in group.iterrows():
-            try:
-                # Konvertiere Zeitstempel zu datetime
-                timestamp = datetime.fromtimestamp(row['time'])
-                formatted_time = timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        # Create KML structure
+        kml_content = []
+        kml_content.append("<?xml version='1.0' encoding='UTF-8'?>\n")
+        kml_content.append('<kml xmlns="http://www.opengis.net/kml/2.2">\n')
+        kml_content.append("<Document>\n")
+        kml_content.append(f"<name>Animated flight path for {callsign}</name>\n")
 
-                # Erstelle einen Wegpunkt
-                waypoint = gpxpy.gpx.GPXWaypoint(
-                    latitude=row['lat'],
-                    longitude=row['lon'],
-                    elevation=row['geoaltitude'],
-                    time=timestamp
-                )
-                gpx_segment.points.append(waypoint)
-            except Exception as e:
-                logging.warning(f"Error processing row {row}: {e}")
+        for i in range(1, len(group)):
+            row_start = group.iloc[i - 1]
+            row_end = group.iloc[i]
 
-        # Speichere die GPX-Datei im GPX-Ordner
-        gpx_file_path = os.path.join(gpx_folder, f'{callsign}.gpx')
+            # Ensure all required data is available
+            if pd.isna(row_start['lon']) or pd.isna(row_start['lat']) or pd.isna(row_start['geoaltitude']) or pd.isna(row_end['lon']) or pd.isna(row_end['lat']) or pd.isna(row_end['geoaltitude']):
+                logging.warning(f"Invalid coordinates for callsign {callsign} at index {i}")
+                continue
+
+            # Convert Unix timestamp to datetime and format for TimeSpan
+            time_start = datetime.utcfromtimestamp(row_start['time']).strftime('%Y-%m-%dT%H:%M:%SZ')
+            time_end = datetime.utcfromtimestamp(row_end['time']).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+            kml_content.append("<Placemark>\n")
+            kml_content.append(f"    <TimeSpan>\n        <begin>{time_start}</begin>\n        <end>{time_end}</end>\n    </TimeSpan>\n")
+            kml_content.append("    <LineString>\n")
+            kml_content.append("        <extrude>1</extrude>\n")
+            kml_content.append("        <altitudeMode>absolute</altitudeMode>\n")
+            kml_content.append(f"        <coordinates>{row_start['lon']},{row_start['lat']},{row_start['geoaltitude']} {row_end['lon']},{row_end['lat']},{row_end['geoaltitude']}</coordinates>\n")
+            kml_content.append("    </LineString>\n")
+            kml_content.append("</Placemark>\n")
+
+        kml_content.append("</Document>\n")
+        kml_content.append("</kml>\n")
+
+        # Save the KML file in the KML folder
+        kml_file_path = os.path.join(kml_folder, f'{callsign}_animated.kml')
         try:
-            with open(gpx_file_path, 'w') as f:
-                f.write(gpx.to_xml())
-            logging.info(f"Saved GPX for {callsign} at {gpx_file_path}")
+            with open(kml_file_path, 'w') as f:
+                f.write(''.join(kml_content))
+            logging.info(f"Saved animated KML for {callsign} at {kml_file_path}")
         except Exception as e:
-            logging.error(f"Failed to write GPX file for {callsign}: {e}")
+            logging.error(f"Failed to write animated KML file for {callsign}: {e}")
