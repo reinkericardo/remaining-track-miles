@@ -3,6 +3,7 @@ import os
 import tarfile
 import pandas as pd
 import numpy as np
+import airportsdata
 from datetime import datetime
 
 
@@ -14,15 +15,18 @@ def extract_tar(file_path):
     """
     with tarfile.open(file_path, 'r') as tar:
         tar.extractall()
+    logging.info('tar file extracted')
 
 
 def load_csv_gzip(file_path):
     """
     Load csv file as dataframe with pandas.
     :param file_path:  File path of csv file.
-    :return: None
+    :return: dataframe with pandas.
     """
-    return pd.read_csv(file_path, compression='gzip')
+    df = pd.read_csv(file_path, compression='gzip')
+    logging.info('csv file loaded')
+    return df
 
 
 def write_kml_for_each_callsign(df):
@@ -36,11 +40,9 @@ def write_kml_for_each_callsign(df):
     kml_folder = 'kml'
     os.makedirs(kml_folder, exist_ok=True)
 
-    # Group the DataFrame by 'callsign'
     grouped = df.groupby('callsign')
 
     for callsign, group in grouped:
-        # Sort the group by time
         group = group.sort_values('time')
 
         # Check if there are enough points to create a line
@@ -158,7 +160,7 @@ def write_animated_kml_for_each_callsign(df):
             logging.error(f"Failed to write animated KML file for {callsign}: {e}")
 
 
-def filter_flights(df, airport_coords):
+def filter_flights(df, airport):
     """
     Filters the DataFrame to retain only those flights (callsigns) that land or start at a certain airport.
 
@@ -174,8 +176,11 @@ def filter_flights(df, airport_coords):
         :param row: A pandas Series representing a row in the DataFrame.
         :return: True if the row is within the threshold distance from the airport, False otherwise.
         """
-        return abs(row['lat'] - airport_coords[0]) < 0.1 and abs(row['lon'] - airport_coords[1]) < 0.1
+        return abs(row['lat'] - airport_lat) < 0.1 and abs(row['lon'] - airport_lon) < 0.1
 
+    airports = airportsdata.load()
+    airport_lat = airports[airport]['lat']
+    airport_lon = airports[airport]['lon']
     filtered_df = df[(df['geoaltitude'] < 1000) & df.apply(within_airport_area, axis=1)]
 
     return df[df['callsign'].isin(filtered_df['callsign'].unique())]
