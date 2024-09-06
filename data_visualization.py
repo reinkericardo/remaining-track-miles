@@ -1,3 +1,4 @@
+import logging
 import plotly.graph_objects as go
 import plotly.express as px
 import plotly.io as pio
@@ -5,14 +6,42 @@ import numpy as np
 from PIL import Image
 
 
-def plot_flight_trajectories(df):
+def plot_waypoints(df, fig, airport_ICAO_code):
+    """
+    Plots waypoints on the provided figure for the specified airport_ICAO_code ICAO code.
+
+    :param df: DataFrame with columns 'Latitude', 'Longitude', 'Designator', 'Name', 'Type', 'Associated Airport'.
+    :param fig: Plotly figure object to which the waypoints will be added.
+    :param airport_ICAO_code: The ICAO code of the airport_ICAO_code to filter waypoints.
+    :return: Updated figure with waypoint traces added.
+    """
+    df_filtered = df[(df['Associated Airport'] == airport_ICAO_code) &
+                     (df['Type'].isin(['ICAO', 'TERMINAL']))]
+    for index, waypoint in df_filtered.iterrows():
+        logging.info(f'Waypoint {waypoint["Name"]}')
+    z = np.zeros(len(df_filtered))
+
+    fig.add_trace(go.Scatter3d(
+        x=df_filtered['Longitude'],
+        y=df_filtered['Latitude'],
+        z=z,
+        mode='markers',
+        marker=dict(size=8, color='blue'),
+        text=df_filtered['Designator'],
+        hoverinfo='text',
+        name='Waypoints'
+    ))
+
+    return fig
+
+
+def plot_flight_trajectories(df, fig):
     """
     Visualizes the 3D flight trajectories grouped by callsigns.
 
     :param df: DataFrame containing flight data with columns 'lon', 'lat', 'geoaltitude', and 'callsign'.
     :return: None. Displays an interactive 3D plot.
     """
-    fig = go.Figure()
 
     grouped = df.groupby('callsign')
 
@@ -26,15 +55,13 @@ def plot_flight_trajectories(df):
             text=group['time'],
             marker=dict(size=4),
             line=dict(width=2),
-            hovertemplate=
-            "Longitude: %{x}<br>" +
-            "Latitude: %{y}<br>" +
-            "Altitude: %{z}<br>" +
-            "Time: %{text}<br>" +
-            "RTM: %{customdata:.2f} km<extra></extra>",
+            hovertemplate="Longitude: %{x}<br>" +
+                          "Latitude: %{y}<br>" +
+                          "Altitude: %{z}<br>" +
+                          "Time: %{text}<br>" +
+                          "RTM: %{customdata:.2f} km<extra></extra>",
             customdata=group['rtm']
         ))
-
 
     fig.update_layout(
         scene=dict(
@@ -108,14 +135,13 @@ def plot_flight_trajectories_with_map(df, map_image_path='map_image.png'):
         showscale=False
     ))
 
-    # Hinzufügen der Flugtrajektorien als 3D Scatter
     grouped = df.groupby('callsign')
     for name, group in grouped:
         scatter = go.Scatter3d(
             x=group['lon'],
             y=group['lat'],
             z=group['geoaltitude'],
-            mode='lines',  # Linienmodus für die Darstellung der Trajektorien
+            mode='lines',
             line=dict(width=2, color='blue'),
             text=group['callsign'],
             name=name
@@ -140,14 +166,14 @@ def plot_flight_trajectories_with_map(df, map_image_path='map_image.png'):
     # Plot anzeigen
     fig.show()
 
-def animate_flight_trajectories(df):
+
+def animate_flight_trajectories(df, fig):
     """
         Visualizes the 3D flight trajectories grouped by callsigns with time-based animation.
 
         :param df: DataFrame containing flight data with columns 'lon', 'lat', 'geoaltitude', 'callsign', and 'time'.
         :return: None. Displays an interactive 3D animated plot.
         """
-    fig = go.Figure()
 
     # Sort data by time to ensure proper animation
     df = df.sort_values(by='time')
@@ -165,12 +191,11 @@ def animate_flight_trajectories(df):
             text=group['time'],
             marker=dict(size=4),
             line=dict(width=2),
-            hovertemplate=
-            "Longitude: %{x}<br>" +
-            "Latitude: %{y}<br>" +
-            "Altitude: %{z}<br>" +
-            "Time: %{text}<br>" +
-            "RTM: %{customdata:.2f} km<extra></extra>",
+            hovertemplate="Longitude: %{x}<br>" +
+                          "Latitude: %{y}<br>" +
+                          "Altitude: %{z}<br>" +
+                          "Time: %{text}<br>" +
+                          "RTM: %{customdata:.2f} km<extra></extra>",
             customdata=group['rtm']
         ))
 
@@ -184,7 +209,7 @@ def animate_flight_trajectories(df):
         scene=dict(
             xaxis=dict(nticks=10, range=[df['lon'].min(), df['lon'].max()]),
             yaxis=dict(nticks=10, range=[df['lat'].min(), df['lat'].max()]),
-            zaxis=dict(nticks=10, range=[df['geoaltitude'].min(), df['geoaltitude'].max()]),
+            zaxis=dict(nticks=10, range=[0, max(df['geoaltitude'].max(), 10)]),
             xaxis_title='Longitude',
             yaxis_title='Latitude',
             zaxis_title='Altitude',
@@ -205,12 +230,11 @@ def animate_flight_trajectories(df):
         marker=dict(size=4),
         line=dict(width=2),
         text=group['time'][group['time'] <= t],
-        hovertemplate=
-        "Longitude: %{x}<br>" +
-        "Latitude: %{y}<br>" +
-        "Altitude: %{z}<br>" +
-        "Time: %{text}<br>" +
-        "RTM: %{customdata:.2f} km<extra></extra>",
+        hovertemplate="Longitude: %{x}<br>" +
+                      "Latitude: %{y}<br>" +
+                      "Altitude: %{z}<br>" +
+                      "Time: %{text}<br>" +
+                      "RTM: %{customdata:.2f} km<extra></extra>",
         customdata=group['rtm'][group['time'] <= t]
     ) for name, group in grouped],
         name=str(t),
@@ -219,4 +243,4 @@ def animate_flight_trajectories(df):
 
     fig.frames = frames
 
-    fig.show()
+    return fig

@@ -9,7 +9,7 @@ from datetime import datetime
 
 def extract_tar(file_path):
     """
-    Extract tar file in same directory as `file_path`
+    Extract tar file in same directory as `adsb_data_file_path`
     :param file_path: File path of tar file.
     :return: None
     """
@@ -18,14 +18,14 @@ def extract_tar(file_path):
     logging.info('tar file extracted')
 
 
-def load_csv_gzip(file_path):
+def load_csv(file_path, compression=None):
     """
     Load csv file as dataframe with pandas.
     :param file_path:  File path of csv file.
     :return: dataframe with pandas.
     """
-    df = pd.read_csv(file_path, compression='gzip')
-    logging.info('csv file loaded')
+    df = pd.read_csv(file_path, compression=compression)
+    logging.info(f'csv file from {file_path}loaded')
     return df
 
 
@@ -160,27 +160,27 @@ def write_animated_kml_for_each_callsign(df):
             logging.error(f"Failed to write animated KML file for {callsign}: {e}")
 
 
-def filter_flights(df, airport):
+def filter_flights(df, airport_ICAO_code):
     """
-    Filters the DataFrame to retain only those flights (callsigns) that land or start at a certain airport.
+    Filters the DataFrame to retain only those flights (callsigns) that land or start at a certain airport_ICAO_code.
 
     :param df: pandas DataFrame containing the flight data with columns 'callsign', 'time', 'lon', 'lat', 'geoaltitude'
-    :param airport_coords: tuple containing the latitude and longitude of the airport
+    :param airport_ICAO_code: airport_ICAO_code ICAO code to filter
     :return: filtered DataFrame by 'callsign'
     """
 
     def within_airport_area(row):
         """
-        Check if the given row's coordinates are within a certain threshold distance from the specified airport coordinates.
+        Check if the given row's coordinates are within a certain threshold distance from the specified airport_ICAO_code coordinates.
 
         :param row: A pandas Series representing a row in the DataFrame.
-        :return: True if the row is within the threshold distance from the airport, False otherwise.
+        :return: True if the row is within the threshold distance from the airport_ICAO_code, False otherwise.
         """
         return abs(row['lat'] - airport_lat) < 0.1 and abs(row['lon'] - airport_lon) < 0.1
 
     airports = airportsdata.load()
-    airport_lat = airports[airport]['lat']
-    airport_lon = airports[airport]['lon']
+    airport_lat = airports[airport_ICAO_code]['lat']
+    airport_lon = airports[airport_ICAO_code]['lon']
     filtered_df = df[(df['geoaltitude'] < 1000) & df.apply(within_airport_area, axis=1)]
 
     return df[df['callsign'].isin(filtered_df['callsign'].unique())]
